@@ -168,31 +168,31 @@
               }
           }
 
+          function resumeVideoElement(video) {
+              const stream = video.srcObject;
+              if (stream) {
+                  console.log("Re-attaching srcObject to recover camera video stream...");
+                  video.srcObject = null;
+                  video.srcObject = stream;
+                  video.play().then(() => {
+                      console.log("Camera video element resumed successfully.");
+                  }).catch(err => {
+                      console.error("Failed to play camera video: ", err);
+                  });
+              } else {
+                  video.play().catch(err => console.log("Video play call: ", err));
+              }
+          }
+
           function handleVisibilityOrShow() {
               if (document.visibilityState === 'visible') {
-                  // Re-acquire Wake Lock
                   requestWakeLock();
-
-                  // Resume camera feed on iOS Safari
                   setTimeout(() => {
                       const videos = document.getElementsByTagName('video');
                       for (let i = 0; i < videos.length; i++) {
                           const video = videos[i];
                           if (video) {
-                              console.log("Attempting to resume camera video element...");
-                              const stream = video.srcObject;
-                              if (stream) {
-                                  // Re-bind srcObject and play to force Safari to rebuild media pipeline
-                                  video.srcObject = null;
-                                  video.srcObject = stream;
-                                  video.play().then(() => {
-                                      console.log("Camera video element resumed successfully.");
-                                  }).catch(err => {
-                                      console.error("Failed to play camera video: ", err);
-                                  });
-                              } else {
-                                  video.play().catch(err => console.log("Video play call: ", err));
-                              }
+                              resumeVideoElement(video);
                           }
                       }
                   }, 300);
@@ -211,6 +211,43 @@
 
           document.addEventListener('visibilitychange', handleVisibilityOrShow);
           window.addEventListener('pageshow', handleVisibilityOrShow);
+
+          // Periodic video freeze detector
+          let lastVideoTimes = new Map();
+          let freezeCounters = new Map();
+          let recoveryCooldowns = new Map();
+
+          setInterval(() => {
+              const videos = document.getElementsByTagName('video');
+              for (let i = 0; i < videos.length; i++) {
+                  const video = videos[i];
+                  if (!video || video.paused) {
+                      continue;
+                  }
+                  
+                  const lastTime = lastVideoTimes.get(video) || 0;
+                  const currentTime = video.currentTime;
+                  
+                  if (currentTime === lastTime && currentTime > 0) {
+                      let count = (freezeCounters.get(video) || 0) + 1;
+                      freezeCounters.set(video, count);
+                      
+                      if (count >= 2) { // Frozen for ~1 second (2 checks of 500ms)
+                          const now = Date.now();
+                          const lastRecovery = recoveryCooldowns.get(video) || 0;
+                          if (now - lastRecovery > 5000) { // 5s cooldown between recoveries
+                              recoveryCooldowns.set(video, now);
+                              console.warn("Video element freeze detected. Attempting recovery...");
+                              freezeCounters.set(video, 0);
+                              resumeVideoElement(video);
+                          }
+                      }
+                  } else {
+                      freezeCounters.set(video, 0);
+                  }
+                  lastVideoTimes.set(video, currentTime);
+              }
+          }, 500);
       })();
     </script>
   </body>
