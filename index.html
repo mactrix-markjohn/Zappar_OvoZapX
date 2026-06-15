@@ -156,6 +156,17 @@
     <script>
       // Screen Wake Lock and WebRTC Camera Auto-Resume Script for Safari iOS
       (function() {
+          const createdVideos = [];
+          const originalCreateElement = document.createElement;
+          document.createElement = function(tagName, options) {
+              const element = originalCreateElement.call(document, tagName, options);
+              if (tagName && tagName.toLowerCase() === 'video') {
+                  createdVideos.push(element);
+                  console.log("[Auto-Resume]: Intercepted dynamic video creation.");
+              }
+              return element;
+          };
+
           let wakeLock = null;
           async function requestWakeLock() {
               if ('wakeLock' in navigator) {
@@ -168,19 +179,25 @@
               }
           }
 
+          function getVideos() {
+              const domVideos = Array.from(document.getElementsByTagName('video'));
+              const allVideos = domVideos.concat(createdVideos);
+              return Array.from(new Set(allVideos));
+          }
+
           function resumeVideoElement(video) {
               const stream = video.srcObject;
               if (stream) {
-                  console.log("Re-attaching srcObject to recover camera video stream...");
+                  console.log("[Auto-Resume]: Re-attaching srcObject to recover camera video stream...");
                   video.srcObject = null;
                   video.srcObject = stream;
                   video.play().then(() => {
-                      console.log("Camera video element resumed successfully.");
+                      console.log("[Auto-Resume]: Camera video element resumed successfully.");
                   }).catch(err => {
-                      console.error("Failed to play camera video: ", err);
+                      console.error("[Auto-Resume]: Failed to play camera video: ", err);
                   });
               } else {
-                  video.play().catch(err => console.log("Video play call: ", err));
+                  video.play().catch(err => console.log("[Auto-Resume]: Video play call: ", err));
               }
           }
 
@@ -188,7 +205,7 @@
               if (document.visibilityState === 'visible') {
                   requestWakeLock();
                   setTimeout(() => {
-                      const videos = document.getElementsByTagName('video');
+                      const videos = getVideos();
                       for (let i = 0; i < videos.length; i++) {
                           const video = videos[i];
                           if (video) {
@@ -218,7 +235,7 @@
           let recoveryCooldowns = new Map();
 
           setInterval(() => {
-              const videos = document.getElementsByTagName('video');
+              const videos = getVideos();
               for (let i = 0; i < videos.length; i++) {
                   const video = videos[i];
                   if (!video || video.paused) {
@@ -237,7 +254,7 @@
                           const lastRecovery = recoveryCooldowns.get(video) || 0;
                           if (now - lastRecovery > 5000) { // 5s cooldown between recoveries
                               recoveryCooldowns.set(video, now);
-                              console.warn("Video element freeze detected. Attempting recovery...");
+                              console.warn("[Auto-Resume]: Video element freeze detected. Attempting recovery...");
                               freezeCounters.set(video, 0);
                               resumeVideoElement(video);
                           }
