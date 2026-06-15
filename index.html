@@ -153,5 +153,65 @@
       };
       document.body.appendChild(script);
     </script>
+    <script>
+      // Screen Wake Lock and WebRTC Camera Auto-Resume Script for Safari iOS
+      (function() {
+          let wakeLock = null;
+          async function requestWakeLock() {
+              if ('wakeLock' in navigator) {
+                  try {
+                      wakeLock = await navigator.wakeLock.request('screen');
+                      console.log('Wake Lock acquired successfully.');
+                  } catch (err) {
+                      console.warn('Wake Lock request failed: ', err.message);
+                  }
+              }
+          }
+
+          function handleVisibilityOrShow() {
+              if (document.visibilityState === 'visible') {
+                  // Re-acquire Wake Lock
+                  requestWakeLock();
+
+                  // Resume camera feed on iOS Safari
+                  setTimeout(() => {
+                      const videos = document.getElementsByTagName('video');
+                      for (let i = 0; i < videos.length; i++) {
+                          const video = videos[i];
+                          if (video) {
+                              console.log("Attempting to resume camera video element...");
+                              const stream = video.srcObject;
+                              if (stream) {
+                                  // Re-bind srcObject and play to force Safari to rebuild media pipeline
+                                  video.srcObject = null;
+                                  video.srcObject = stream;
+                                  video.play().then(() => {
+                                      console.log("Camera video element resumed successfully.");
+                                  }).catch(err => {
+                                      console.error("Failed to play camera video: ", err);
+                                  });
+                              } else {
+                                  video.play().catch(err => console.log("Video play call: ", err));
+                              }
+                          }
+                      }
+                  }, 300);
+              } else {
+                  if (wakeLock !== null) {
+                      wakeLock = null;
+                  }
+              }
+          }
+
+          if (document.readyState === 'complete' || document.readyState === 'interactive') {
+              requestWakeLock();
+          } else {
+              document.addEventListener('DOMContentLoaded', requestWakeLock);
+          }
+
+          document.addEventListener('visibilitychange', handleVisibilityOrShow);
+          window.addEventListener('pageshow', handleVisibilityOrShow);
+      })();
+    </script>
   </body>
 </html>
